@@ -1,4 +1,5 @@
 import {Expression, Value, Column} from './Expression';
+import {Table} from './Model';
 import * as _ from 'lodash';
 import * as assert from 'assert';
 
@@ -16,7 +17,7 @@ export class RowSource {
   public whereClauses : WhereClause[] | void;
   public orderByClauses : OrderByClause[] | void;
   public limit : number | void;
-  public joins : [[string, string], [string, string]] | void;
+  public joins : JoinClause[] | void;
 
   public selected : ColSelection[] | void;
 
@@ -32,11 +33,11 @@ export class RowSource {
     }
   }
 
-  static fromTable(tableName: string, sourceName?: string) {
+  static fromTable(table: Table, sourceName?: string) {
     const instance = new RowSource();
-    sourceName = sourceName || tableName;
+    sourceName = sourceName || table.name;
     instance.sources = <SourceList>{};
-    instance.sources[sourceName] = [new Table(tableName), ''];
+    instance.sources[sourceName] = [table, ''];
     return instance;
   }
 
@@ -51,19 +52,31 @@ export class RowSource {
     return (<RowSource>this.context).resolveSource(sourceName);
   }
 
-  public select(colSelections : ColSelectionParam[]) : void {
+  public select(colSelections : ColSelectionParam[]) : RowSource {
+    const instance = new RowSource(this);
+
+    function fail() : Expression {
+      throw new Error("Unknown type case");
+    }
+
     const selected : ColSelection[] =
       colSelections.map((colSelection) : ColSelection => {
-        if (typeof colSelection === 'string' ||
-          colSelection instanceof Array) {
-            let column = this.col(<string | [string,string]>colSelection);
-            return column;
-        } else {
-          let column = this.col((<AliasedColSelection>colSelection).selection);
-          return [column, colSelection.as];
-        }
+        /* string */
+        return (typeof colSelection == 'string') ? this.col(<string>colSelection)
+        /* [Expression, string] , [string, string] */
+          : (colSelection instanceof Array) ? (
+                /* [string, string] */
+                (typeof colSelection[0] == 'string') ? this.col(<[string,string]>colSelection)
+                /* [Expression, string] */
+                : (colSelection[0] instanceof Expression) ? <[Expression, string]>colSelection
+                : fail())
+          : (colSelection instanceof Expression) ? colSelection
+          : [ this.col(<string | [string, string]>(<AliasedColSelection>colSelection).selection),
+              (<AliasedColSelection>colSelection).as
+            ];
       });
-    this.selected = selected;
+    instance.selected = selected;
+    return instance;
   }
 
   public toSQL() : string {
@@ -73,17 +86,17 @@ export class RowSource {
       table_alias[1] = source;
     });
 
-    const selectClause = 'SELECT ' +
+    const selectClause = 'SELECT \n    ' +
       (this.selected ?
         (<ColSelection[]>this.selected).map((colSelection) => {
-          let column = (colSelection instanceof Column) ?
+          let column = (colSelection instanceof Expression) ?
             colSelection : colSelection[0];
 
-          let as = (colSelection instanceof Column) ?
+          let as = (colSelection instanceof Expression) ?
             '' : ` AS "${colSelection[1]}"`
 
           return column.toSQL() + as;
-        }).join(',')
+        }).join(',\n    ')
         : '*')
 
     // FIXME: deal with inner joins
@@ -95,9 +108,32 @@ export class RowSource {
         })
         .join('')
 
+    const row = new Row(this);
+
+    const where_WhereConditions =
+      (<any>_(this.whereClauses))
+        .map(fn => fn(row).toSQL())
+        .value()
+
+    const joins_WhereConditions =
+      (<any>_(this.joins || []))
+        .map(([thisSource, thatSource, joinExpr]) => {
+          // console.log(this);
+          // console.log(thisSource);
+          // console.log(thatSource);
+          // console.log(joinExpr);
+          return joinExpr(row, thisSource, thatSource).toSQL();
+        })
+        .value();
+
+    const whereClause = 'WHERE ' +
+      (where_WhereConditions.concat(joins_WhereConditions))
+      .join(' AND\n    ');
+
     return [
       selectClause,
-      fromClause
+      fromClause,
+      whereClause
     ].join('\n')
   }
 
@@ -131,19 +167,47 @@ export class Row {
   col(first: string, second: string) : Column;
   col(first: string) : Column;
   col(first: string, second?: any) : Column {
-    if (second) {
+    if (!second) {
       assert.strictEqual(_.keys(this.rowSource.sources).length, 1);
-      return new Column(this.rowSource, _.keys(this.rowSource.sources)[0], second);
+      return new Column(this.rowSource, _.keys(this.rowSource.sources)[0], first);
     }
     else {
       return new Column(this.rowSource, first, second);
     }
   }
-}
 
-class Table {
-  public name : string;
-  constructor (name: string) { this.name = name }
+  fetch(thisSource: string, otherSource : Table, as? : string) : Row;
+  fetch(otherSource : Table, as? : string) : Row;
+  fetch(first: any, second?: any, third?: any) : Row {
+    let thisSource: string, otherSource: Table, as: string;
+
+    if (first instanceof Table) {
+      assert.strictEqual(_.keys(this.rowSource.sources).length, 1);
+      thisSource = _.keys(this.rowSource.sources)[0];
+      ([otherSource, as] = [first, second])
+    }
+    else if (typeof first === 'string') {
+      ([thisSource, otherSource, as] = [first, second, third]);
+    }
+    else {
+      assert(false);
+    }
+
+    as = as || otherSource.name;
+
+    // get the association
+    let association = this.rowSource.sources[thisSource][0].associations[as];
+
+    let rowSource = RowSource.fromTable(otherSource, as);
+    rowSource.context = this.rowSource;
+    rowSource.joins = rowSource.joins || [];
+    rowSource.joins = (<JoinClause[]>rowSource.joins).concat(
+      association.joinConditions.map(joinCondition =>
+        [thisSource, as, joinCondition])
+    )
+
+    return new Row(rowSource);
+  }
 }
 
 enum OrderDirection {
@@ -151,6 +215,8 @@ enum OrderDirection {
   DESC = 1
 };
 type WhereClause = (row : Row) => Expression;
+export type JoinCondition = (row: Row, master: string, thatRowSource: string) => Expression;
+type JoinClause = [string, string, JoinCondition];
 type OrderByClause = [
   (row : Row) => Expression,
   OrderDirection
@@ -161,10 +227,12 @@ type OrderByClause = [
   */
 type ColSelectionParam =
   string | /* column name only */
-  [string, string] |
-  AliasedColSelection /* source name and column name */
+  Expression |
+  [Expression, string] |
+  [string, string] | /* source name and column name */
+  AliasedColSelection
 
-type ColSelection = Column | [Column, string];
+type ColSelection = Expression | [Expression, string];
 
 interface AliasedColSelection {
   selection: string | [string, string];

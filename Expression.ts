@@ -26,6 +26,13 @@ export abstract class Expression {
     )
   }
 
+  lt(that : ExpressionLike) {
+    return new BinaryOp(
+      ['(', ') < (', ')'],
+      this, toExpression(that)
+    )
+  }
+
   gte(that : ExpressionLike) {
     return new BinaryOp(
       ['(', ') >= (', ')'],
@@ -53,6 +60,20 @@ export abstract class Expression {
       this, toExpression(that)
     )
   }
+
+  and(that : ExpressionLike) {
+    return new BinaryOp(
+      '(#) AND (#)'.split('#'),
+      this, toExpression(that)
+    )
+  }
+
+  or(that : ExpressionLike) {
+    return new BinaryOp(
+      '(#) OR (#)'.split('#'),
+      this, toExpression(that)
+    )
+  }
 }
 
 export function not(that: Expression) : UnaryOp {
@@ -63,10 +84,23 @@ export function neg(that: Expression) : UnaryOp {
   return new UnaryOp('-(', that, ')')
 }
 
+export class RowSourceExpression extends Expression {
+  public rowSource: RowSource;
+  constructor(rowSource: RowSource) {
+    super();
+    this.rowSource = rowSource;
+  }
+  toSQL() {
+    return `(${this.rowSource.toSQL()})`.replace(/\n/g, '\n    ');
+  }
+}
+
 export class Column extends Expression {
-  public context : Context;
+  // FIXME: what if this context turns stale?
+  public context : RowSource;
   public sourceName : string;
   public colName : string;
+
   constructor (context : RowSource, sourceName: string, colName: string) {
     super();
     this.context = context;
@@ -74,7 +108,25 @@ export class Column extends Expression {
     this.colName = colName;
   }
   toSQL() {
-    return `"${this.context.resolveSource(this.sourceName)}".${this.colName}`
+    return `"${this.context.resolveSource(this.sourceName)}"."${this.colName}"`
+  }
+
+  _constructSummary(sqlFunc: string) : Expression {
+    let summarized = new RowSource(this.context);
+    summarized.selected = [
+      new UnaryOp(
+        sqlFunc + '(',
+        new Column(summarized, this.sourceName, this.colName),
+        ')')
+    ]
+    return new RowSourceExpression(summarized);
+  }
+
+  min() : Expression {
+    return this._constructSummary('MIN');
+  }
+  max() : Expression {
+    return this._constructSummary('MAX');
   }
 }
 
@@ -111,14 +163,17 @@ export class BinaryOp extends Expression {
 
   constructor (parts : string[], op1 : Expression, op2 : Expression) {
     super();
+    this.parts = parts;
+    this.op1 = op1;
+    this.op2 = op2;
     assert.strictEqual(parts.length, 3);
   }
   toSQL() : string {
     return [
       this.parts[0],
-      this.op1,
+      this.op1.toSQL(),
       this.parts[1],
-      this.op2,
+      this.op2.toSQL(),
       this.parts[2]
     ].join('');
   }
@@ -136,7 +191,7 @@ export function toExpression(v: ExpressionLike) : Expression {
 
   return (v instanceof Expression) ? v
     : (v instanceof Date) ? new Value(`"${v.toISOString()}"`)
-    : (typeof v === 'string') ? new Value(escape(v))
+    : (typeof v === 'string') ? new Value(`"${escape(v)}"`)
     : (typeof v === 'number') ? new Value(v.toString())
     : failure();
 }
