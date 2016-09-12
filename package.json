@@ -1,15 +1,19 @@
 {
-  "name": "sequelize-linq",
-  "version": "1.0.0",
+  "name": "squeal",
+  "version": "0.0.1",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "lab --sourcemaps --transform node_modules/lab-transform-typescript -c test",
+    "build": "tsc -p src"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "lab": "^11.0.1",
+    "lab-transform-typescript": "^1.0.0",
     "lodash": "^4.15.0",
+    "must": "^0.13.2",
     "typescript": "^1.8.10"
   }
 }

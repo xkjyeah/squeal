@@ -1,4 +1,4 @@
-/// <reference path="typings/index.d.ts" />
+/// <reference path="../typings/index.d.ts" />
 import * as assert from 'assert';
 import {Context, RowSource} from './RowSource';
 
@@ -84,6 +84,8 @@ export function neg(that: Expression) : UnaryOp {
   return new UnaryOp('-(', that, ')')
 }
 
+/** An expression whose value is derived from an
+    SQL subquery */
 export class RowSourceExpression extends Expression {
   public rowSource: RowSource;
   constructor(rowSource: RowSource) {
@@ -95,41 +97,7 @@ export class RowSourceExpression extends Expression {
   }
 }
 
-export class Column extends Expression {
-  // FIXME: what if this context turns stale?
-  public context : RowSource;
-  public sourceName : string;
-  public colName : string;
-
-  constructor (context : RowSource, sourceName: string, colName: string) {
-    super();
-    this.context = context;
-    this.sourceName = sourceName;
-    this.colName = colName;
-  }
-  toSQL() {
-    return `"${this.context.resolveSource(this.sourceName)}"."${this.colName}"`
-  }
-
-  _constructSummary(sqlFunc: string) : Expression {
-    let summarized = new RowSource(this.context);
-    summarized.selected = [
-      new UnaryOp(
-        sqlFunc + '(',
-        new Column(summarized, this.sourceName, this.colName),
-        ')')
-    ]
-    return new RowSourceExpression(summarized);
-  }
-
-  min() : Expression {
-    return this._constructSummary('MIN');
-  }
-  max() : Expression {
-    return this._constructSummary('MAX');
-  }
-}
-
+/** An SQL literal */
 export class Value extends Expression {
   public value : string;
   constructor (value : string) {
@@ -179,7 +147,7 @@ export class BinaryOp extends Expression {
   }
 }
 
-type ExpressionLike = Expression | number | string | Date;
+export type ExpressionLike = Expression | number | string | Date;
 
 export function toExpression(v: ExpressionLike) : Expression {
   function escape(s) {
@@ -194,4 +162,8 @@ export function toExpression(v: ExpressionLike) : Expression {
     : (typeof v === 'string') ? new Value(`"${escape(v)}"`)
     : (typeof v === 'number') ? new Value(v.toString())
     : failure();
+}
+
+export function literal(v: string) : Expression {
+  return new Value(v);
 }

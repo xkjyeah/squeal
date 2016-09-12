@@ -1,4 +1,5 @@
-import {Row, RowSource, JoinCondition} from './RowSource';
+import {RowSource, JoinCondition} from './RowSource';
+import {Row} from './Row';
 import {Expression} from './Expression';
 
 export class Table {

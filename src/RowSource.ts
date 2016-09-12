@@ -1,5 +1,7 @@
-import {Expression, Value, Column} from './Expression';
+import {Expression, Value, literal} from './Expression';
+import {Column} from './Column';
 import {Table} from './Model';
+import {Row} from './Row';
 import * as _ from 'lodash';
 import * as assert from 'assert';
 
@@ -52,30 +54,64 @@ export class RowSource {
     return (<RowSource>this.context).resolveSource(sourceName);
   }
 
-  public select(colSelections : ColSelectionParam[]) : RowSource {
+  /* Selects only the columns specified in exprs */
+  public select(exprs : SelectArg[]) : RowSource {
+    return this._select([], exprs);
+  }
+
+  /*
+    Selects previously selected columns ('*' if none previously selected),
+    plus some additional columns specified in expr
+  */
+  public andSelect(exprs : SelectArg[]) : RowSource {
+    return this._select(
+      <ColSelection[]>this.selected || [() => literal('*')],
+      exprs
+    )
+  }
+
+  private _select(previous : ColSelection[], exprs : SelectArg[]) : RowSource {
     const instance = new RowSource(this);
 
     function fail() : Expression {
       throw new Error("Unknown type case");
     }
 
+    function resolveColumnExpression(expr: SelectColumnExpression) : ExpressionFn {
+      if (typeof expr === 'string') {
+        return (row: Row) => row.col(<string>expr);
+      }
+      else if (expr instanceof Array) {
+        return (row: Row) => row.col(
+          (<[string, string]>expr)[0],
+          (<[string, string]>expr)[1]
+        );
+      }
+      else if (expr instanceof Function) {
+        return <(row:Row) => Expression> expr;
+      }
+      else {
+        fail();
+      }
+    }
+
     const selected : ColSelection[] =
-      colSelections.map((colSelection) : ColSelection => {
+      exprs.map((expr) : ColSelection => {
         /* string */
-        return (typeof colSelection == 'string') ? this.col(<string>colSelection)
-        /* [Expression, string] , [string, string] */
-          : (colSelection instanceof Array) ? (
-                /* [string, string] */
-                (typeof colSelection[0] == 'string') ? this.col(<[string,string]>colSelection)
-                /* [Expression, string] */
-                : (colSelection[0] instanceof Expression) ? <[Expression, string]>colSelection
-                : fail())
-          : (colSelection instanceof Expression) ? colSelection
-          : [ this.col(<string | [string, string]>(<AliasedColSelection>colSelection).selection),
-              (<AliasedColSelection>colSelection).as
-            ];
+        if (typeof expr === 'string' ||
+            typeof expr === 'function' ||
+            expr instanceof Array) {
+              return resolveColumnExpression(<string>expr)
+        }
+        else {
+          return <[ExpressionFn, string]>[
+            resolveColumnExpression(<string>(<AliasedSelectColumnExpression>expr).expr),
+            (<AliasedSelectColumnExpression>expr).as
+          ];
+        }
       });
-    instance.selected = selected;
+
+    instance.selected = previous.concat(selected);
     return instance;
   }
 
@@ -157,84 +193,38 @@ export class RowSource {
   }
 }
 
-export class Row {
-  public rowSource : RowSource;
-
-  constructor (rowSource: RowSource) {
-    this.rowSource = rowSource;
-  }
-
-  col(first: string, second: string) : Column;
-  col(first: string) : Column;
-  col(first: string, second?: any) : Column {
-    if (!second) {
-      assert.strictEqual(_.keys(this.rowSource.sources).length, 1);
-      return new Column(this.rowSource, _.keys(this.rowSource.sources)[0], first);
-    }
-    else {
-      return new Column(this.rowSource, first, second);
-    }
-  }
-
-  fetch(thisSource: string, otherSource : Table, as? : string) : Row;
-  fetch(otherSource : Table, as? : string) : Row;
-  fetch(first: any, second?: any, third?: any) : Row {
-    let thisSource: string, otherSource: Table, as: string;
-
-    if (first instanceof Table) {
-      assert.strictEqual(_.keys(this.rowSource.sources).length, 1);
-      thisSource = _.keys(this.rowSource.sources)[0];
-      ([otherSource, as] = [first, second])
-    }
-    else if (typeof first === 'string') {
-      ([thisSource, otherSource, as] = [first, second, third]);
-    }
-    else {
-      assert(false);
-    }
-
-    as = as || otherSource.name;
-
-    // get the association
-    let association = this.rowSource.sources[thisSource][0].associations[as];
-
-    let rowSource = RowSource.fromTable(otherSource, as);
-    rowSource.context = this.rowSource;
-    rowSource.joins = rowSource.joins || [];
-    rowSource.joins = (<JoinClause[]>rowSource.joins).concat(
-      association.joinConditions.map(joinCondition =>
-        [thisSource, as, joinCondition])
-    )
-
-    return new Row(rowSource);
-  }
-}
-
 enum OrderDirection {
   ASC = 0,
   DESC = 1
 };
-type WhereClause = (row : Row) => Expression;
+export type WhereClause = (row : Row) => Expression;
 export type JoinCondition = (row: Row, master: string, thatRowSource: string) => Expression;
-type JoinClause = [string, string, JoinCondition];
-type OrderByClause = [
+export type JoinClause = [string, string, JoinCondition];
+export type OrderByClause = [
   (row : Row) => Expression,
   OrderDirection
 ]
+
+
+export type ExpressionFn = (row: Row) => Expression;
 /**
   1) column reference only
   2) column reference and alias
   */
-type ColSelectionParam =
+export type SelectColumnExpression =
   string | /* column name only */
-  Expression |
-  [Expression, string] |
   [string, string] | /* source name and column name */
-  AliasedColSelection
+  ExpressionFn; /* an arbitrary expression */
 
-type ColSelection = Expression | [Expression, string];
+export type SelectArg =
+  SelectColumnExpression |
+  AliasedSelectColumnExpression;
 
-interface AliasedColSelection {
-  selection: string | [string, string];
+export type ColSelection =
+  ExpressionFn |
+  [ExpressionFn, string];
+
+export interface AliasedSelectColumnExpression {
+  expr: SelectColumnExpression;
   as: string;
 }
