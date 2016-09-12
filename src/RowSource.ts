@@ -162,9 +162,10 @@ export class RowSource {
         })
         .value();
 
-    const whereClause = 'WHERE ' +
-      (where_WhereConditions.concat(joins_WhereConditions))
-      .join(' AND\n    ');
+    const whereConditions = (where_WhereConditions.concat(joins_WhereConditions));
+    const whereClause = whereConditions.length > 0 ?
+      'WHERE ' + whereConditions.join(' AND\n    ')
+      : '';
 
     return [
       selectClause,
