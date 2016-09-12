@@ -37,4 +37,7 @@ var trips = RowSource.fromTable(Trip)
 var earlyTrips = trips.where(
   (trip: Row) : Expression => trip.fetch(Stop).col('x').min() .lt ('07:00')
 )
+.where(
+  (trip: Row) : Expression => trip.fetch(Stop).col('x').min() .gt ('05:00')
+)
 console.log(earlyTrips.toSQL());
