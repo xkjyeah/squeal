@@ -1,6 +1,6 @@
 /// <reference path="../typings/index.d.ts" />
 import * as assert from 'assert';
-import {Context, RowSource} from './RowSource';
+import {Context, Query} from './Query';
 
 export abstract class Expression {
   abstract toSQL() : string;
@@ -86,14 +86,14 @@ export function neg(that: Expression) : UnaryOp {
 
 /** An expression whose value is derived from an
     SQL subquery */
-export class RowSourceExpression extends Expression {
-  public rowSource: RowSource;
-  constructor(rowSource: RowSource) {
+export class QueryExpression extends Expression {
+  public query: Query;
+  constructor(query: Query) {
     super();
-    this.rowSource = rowSource;
+    this.query = query;
   }
   toSQL() {
-    return `(${this.rowSource.toSQL()})`.replace(/\n/g, '\n    ');
+    return `(${this.query.toSQL()})`.replace(/\n/g, '\n    ');
   }
 }
 

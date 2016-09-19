@@ -1,14 +1,14 @@
-import {UnaryOp, RowSourceExpression, Expression} from './Expression';
-import {RowSource} from './RowSource';
+import {UnaryOp, QueryExpression, Expression} from './Expression';
+import {Query} from './Query';
 import {Row} from './Row';
 
 export class Column extends Expression {
   // FIXME: what if this context turns stale?
-  public context : RowSource;
+  public context : Query;
   public sourceName : string;
   public colName : string;
 
-  constructor (context : RowSource, sourceName: string, colName: string) {
+  constructor (context : Query, sourceName: string, colName: string) {
     super();
     this.context = context;
     this.sourceName = sourceName;
@@ -19,7 +19,7 @@ export class Column extends Expression {
   }
 
   _constructSummary(sqlFunc: string) : Expression {
-    let summarized = new RowSource(this.context);
+    let summarized = new Query(this.context);
     summarized.selected = [
       (row: Row) =>
         new UnaryOp(
@@ -27,7 +27,7 @@ export class Column extends Expression {
           row.col(this.sourceName, this.colName),
           ')')
     ]
-    return new RowSourceExpression(summarized);
+    return new QueryExpression(summarized);
   }
 
   min() : Expression {
