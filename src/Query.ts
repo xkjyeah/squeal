@@ -24,6 +24,9 @@ export class Query {
   public limit : number | void;
   public joins : JoinClause[] | void;
 
+  // Retrieval settings
+  public includes : Query[] | void;
+
   public selected : ColSelection[] | void;
 
   constructor(that?: Query) {
@@ -312,6 +315,23 @@ export class Query {
       clone.joins = clone.joins ? clone.joins.concat(joinClauses) : joinClauses;
     }
     return clone;
+  }
+
+  public include(otherQuery: Query) {
+    let clone = new Query(this);
+
+    clone.includes = clone.includes || [];
+    (<Query[]>clone.includes).push(otherQuery);
+
+    return clone;
+  }
+
+  public async get() {
+    let selfSQL = this.toSQL();
+
+    let rows = await RowSource.db.query(selfSQL);
+
+    return rows;
   }
 }
 

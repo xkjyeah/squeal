@@ -6,7 +6,7 @@ import {Expression} from './Expression';
 export class Table extends RowSource {
   public primaryKey: string;
 
-  constructor (primaryKey: string = 'id') {
+  constructor (name : string, primaryKey: string = 'id') {
     super(name);
     this.primaryKey = primaryKey;
   }

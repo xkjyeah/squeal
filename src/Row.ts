@@ -1,6 +1,6 @@
 import {Expression, Value} from './Expression';
 import {Column} from './Column';
-import {Table} from './Model';
+import {Table} from './Table';
 import {Query, JoinClause} from './Query';
 import * as _ from 'lodash';
 import * as assert from 'assert';
