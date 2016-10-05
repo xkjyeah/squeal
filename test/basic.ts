@@ -1,7 +1,9 @@
 import * as Lab from 'lab';
 import * as expect from 'must';
 
-import {RowSource, Table} from '../src/index.ts';
+import {RowSource} from '../src/RowSource.ts';
+import {Table} from '../src/Table.ts';
+import {Query} from '../src/Query.ts';
 
 export const lab = Lab.script();
 
@@ -24,7 +26,7 @@ lab.experiment('Basic', () => {
   });
 
   lab.test('Table select', async function () {
-    var query = RowSource.fromTable(Foo).toSQL();
+    var query = Query.fromRowSource(Foo).toSQL();
 
     expect(query).fuzz('SELECT * FROM "foo" AS "foo"')
   });

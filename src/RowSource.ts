@@ -5,6 +5,7 @@ export class RowSource {
   public name : string;
   public associations : { [otherName: string]: Association };
   public primaryKey : string | void;
+  public db : any;
 
   constructor(name: string | void = null, primaryKey : string | void = null) {
     this.associations = {};

@@ -3,12 +3,14 @@ import * as expect from 'must';
 
 import {RowSource, Table, Query} from '../src/index.ts';
 import {db, Sequelize} from './sequelize-integration.ts';
+import {ModelManager} from '../src/SequelizeIntegration.ts';
 
 export const lab = Lab.script();
 
 lab.experiment('Basic with Database', () => {
   var Person;
   var Pet;
+  var modelManager : ModelManager;
 
   lab.before(async function() {
     Person = db.define('person', {
@@ -52,28 +54,30 @@ lab.experiment('Basic with Database', () => {
       name: 'Ruff',
       breed: 'Dobermann'
     }))
+
+    modelManager = new ModelManager(db);
   });
 
   lab.test('Table select', async function () {
-    var personQuery = Query.fromSequelize(Person);
-    var persons = await personQuery.get()
+    var personQuery = Query.fromRowSource(modelManager.tablesByName['people']);
+    var persons = await personQuery.get(db)
 
     expect(persons.find(p => p.name === 'Michael')).exist()
     expect(persons.find(p => p.name === 'John')).exist()
   });
 
   lab.test('Table select with where', async function () {
-    var personQuery = Query.fromSequelize(Person);
-    var persons = await personQuery.where((row) => row.col('name').equal('Michael')).get()
+    var personQuery = Query.fromRowSource(modelManager.tablesByName['people']);
+    var persons = await personQuery.where((row) => row.col('name').eq('Michael')).get(db)
 
     expect(persons.find(p => p.name === 'Michael')).exist()
     expect(persons.find(p => p.name !== 'Michael')).not.exist()
   });
 
   lab.test('Table select with join (where outside)', async function() {
-    var personQuery = Query.fromSequelize(Person);
-    var persons = await personQuery.where((row) => row.col('name').equal('Michael'))
-                    .include('pets').get()
+    var personQuery = Query.fromRowSource(modelManager.tablesByName['people']);
+    var persons = await personQuery.where((row) => row.col('name').eq('Michael'))
+                    .include('pets').get(db)
 
     expect(persons.length).equal(1)
     expect(persons[0].name).equal('Michael')
@@ -82,10 +86,10 @@ lab.experiment('Basic with Database', () => {
   })
 
   lab.test('Table select with join (where inside)', async function() {
-    var personQuery = Query.fromSequelize(Person);
-    var petQuery = Query.fromSequelize(Pet);
+    var personQuery = Query.fromRowSource(modelManager.tablesByName['people']);
+    var petQuery = Query.fromRowSource(modelManager.tablesByName['pets']);
     var persons = await personQuery
-                    .include(petQuery.where(row => row.col('name').equal('Ruff'))).get()
+                    .include(petQuery.where(row => row.col('name').eq('Ruff'))).get(db)
 
     expect(persons.length).equal(2)
     expect(persons.find(p => p.name === 'Michael').pets.length).equal(0)
@@ -94,10 +98,11 @@ lab.experiment('Basic with Database', () => {
   })
 
   lab.test('Where on related table, but no join', async function() {
-    var personQuery = Query.fromSequelize(Person);
+    var personQuery = Query.fromRowSource(modelManager.tablesByName['people']);
     var persons = await personQuery.where(
-      row => row.fetch('pets').where(pet => pet.name.equal('Dolly')).exists()
-    )
+      row => row.fetch(modelManager.tablesByName['pets'])
+        .where(pet => pet.name.eq('Dolly')).exists()
+    ).get(db)
 
     expect(persons.length).equal(1)
     expect(persons[0].name).equal('John')

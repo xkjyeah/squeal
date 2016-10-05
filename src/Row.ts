@@ -46,7 +46,7 @@ export class Row {
     // get the association
     let association = this.query.sources[thisSource][0].associations[as];
 
-    let query = Query.fromTable(otherSource, as);
+    let query = Query.fromRowSource(otherSource, as);
     query.context = this.query;
     query.joins = query.joins || [];
     query.joins = (<JoinClause[]>query.joins).concat(

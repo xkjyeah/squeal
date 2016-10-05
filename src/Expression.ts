@@ -158,8 +158,8 @@ export function toExpression(v: ExpressionLike) : Expression {
   }
 
   return (v instanceof Expression) ? v
-    : (v instanceof Date) ? new Value(`"${v.toISOString()}"`)
-    : (typeof v === 'string') ? new Value(`"${escape(v)}"`)
+    : (v instanceof Date) ? new Value(`'${v.toISOString()}'`)
+    : (typeof v === 'string') ? new Value(`'${escape(v)}'`)
     : (typeof v === 'number') ? new Value(v.toString())
     : failure();
 }

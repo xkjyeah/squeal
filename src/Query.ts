@@ -41,9 +41,9 @@ export class Query {
     }
   }
 
-  static fromRowSource(rowSource: RowSource, sourceName?: string) {
+  static fromRowSource(rowSource: RowSource, _sourceName?: string) {
     const instance = new Query();
-    sourceName = sourceName || rowSource.name;
+    let sourceName = _sourceName || rowSource.name;
     instance.sources = <SourceList>{};
     instance.sources[sourceName] = [rowSource, ''];
     return instance;
@@ -326,10 +326,12 @@ export class Query {
     return clone;
   }
 
-  public async get() {
+  public async get(db) {
     let selfSQL = this.toSQL();
 
-    let rows = await RowSource.db.query(selfSQL);
+    let rows = await db.query(selfSQL, {
+      type: db.QueryTypes.SELECT
+    });
 
     return rows;
   }
