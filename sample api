@@ -18,9 +18,6 @@ class Query {
 
   static fromTable(string, TableOptions) : Query
 
-  // With this other query as a secondary data source ??
-  static fromQuery(Query) : Query
-
   /* Filtering methods */
   _whereClauses : WhereClause[]
   where(Row => Query) : Query
@@ -54,7 +51,7 @@ class Query {
   join(Query | string, JoinOptions) : Query
 
 
-  get() : any[]
+  get() : Promise<any[]>
 
   /*
     Relational methods -- To manage relationships between a bunch of tables,

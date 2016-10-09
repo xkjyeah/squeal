@@ -1,9 +1,9 @@
 /// <reference path="../typings/index.d.ts" />
 import * as assert from 'assert';
-import {Context, Query} from './Query';
+import {DataSourceIdentifierMap, Query} from './Query';
 
 export abstract class Expression {
-  abstract toSQL() : string;
+  abstract toSQL(aliases : DataSourceIdentifierMap) : string;
 
   plus(that : ExpressionLike) {
     return new BinaryOp(
@@ -119,8 +119,8 @@ export class UnaryOp extends Expression {
     this.after = after;
     this.operand = operand;
   }
-  toSQL() : string {
-    return this.before + this.operand.toSQL() + this.after;
+  toSQL(aliases : DataSourceIdentifierMap) : string {
+    return this.before + this.operand.toSQL(aliases) + this.after;
   }
 }
 
@@ -136,12 +136,12 @@ export class BinaryOp extends Expression {
     this.op2 = op2;
     assert.strictEqual(parts.length, 3);
   }
-  toSQL() : string {
+  toSQL(aliases : DataSourceIdentifierMap) : string {
     return [
       this.parts[0],
-      this.op1.toSQL(),
+      this.op1.toSQL(aliases),
       this.parts[1],
-      this.op2.toSQL(),
+      this.op2.toSQL(aliases),
       this.parts[2]
     ].join('');
   }

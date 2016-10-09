@@ -1,4 +1,8 @@
-import * as Sequelize from 'sequelize';
+declare var process : any;
+declare var require : (string) => any;
+// import * as Sequelize from 'sequelize';
+
+const Sequelize = require('sequelize');
 
 export {Sequelize};
 export var db = new Sequelize(

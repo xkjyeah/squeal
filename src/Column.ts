@@ -1,4 +1,4 @@
-import {UnaryOp, QueryExpression, Expression} from './Expression';
+import {UnaryOp, QueryExpression, Expression, DataSourceIdentifierMap} from './Expression';
 import {Query} from './Query';
 import {Row} from './Row';
 
@@ -14,19 +14,20 @@ export class Column extends Expression {
     this.sourceName = sourceName;
     this.colName = colName;
   }
-  toSQL() {
-    return `"${this.context.resolveSource(this.sourceName)}"."${this.colName}"`
+
+  toSQL(aliases : DataSourceIdentifierMap) {
+    return `"${aliases[this.sourceName]}"."${this.colName}"`
   }
 
   _constructSummary(sqlFunc: string) : Expression {
-    let summarized = new Query(this.context);
-    summarized.selected = [
-      (row: Row) =>
-        new UnaryOp(
+    let summarized = this.context
+      .selectNone()
+      .select((row) => [
+        [new UnaryOp(
           sqlFunc + '(',
           row.col(this.sourceName, this.colName),
-          ')')
-    ]
+          ')'), 'sqlFunc']
+      ])
     return new QueryExpression(summarized);
   }
 

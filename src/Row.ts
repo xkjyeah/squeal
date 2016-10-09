@@ -1,26 +1,62 @@
 import {Expression, Value} from './Expression';
 import {Column} from './Column';
+import {AllColumns} from './AllColumns';
 import {Table} from './Table';
-import {Query, JoinClause} from './Query';
+import {Query, JoinClause, SourceReferenceSubstitutions} from './Query';
 import * as _ from 'lodash';
 import * as assert from 'assert';
 
 export class Row {
   public query : Query;
+  public substitutions : SourceReferenceSubstitutions[];
+  public defaultSourceName : string;
 
   constructor (query: Query) {
     this.query = query;
+    this.substitutions = [];
+    this.defaultSourceName = query._defaultSource;
+  }
+
+  clone() : Row {
+    let clone = new Row(this.query);
+    clone.substitutions = _.clone(this.substitutions);
+    clone.defaultSourceName = _.clone(this.defaultSourceName);
+    return clone;
+  }
+
+  applySubstitutions(subs: SourceReferenceSubstitutions) : Row {
+    let clone = this.clone();
+
+    clone.substitutions = clone.substitutions.concat([subs])
+
+    return clone;
+  }
+
+  /**
+    Successively apply substitutions
+  */
+  substitute(source: string) : string {
+    return _.reduce(this.substitutions, (acc, val, key, col) => {
+      if (acc in val) {
+        return val[acc];
+      } else {
+        return acc;
+      }
+    }, source)
+  }
+
+  star(sourceName: string) : AllColumns {
+    return new AllColumns(this.query, sourceName);
   }
 
   col(sourceName: string, columnName: string) : Column;
   col(columnName: string) : Column;
   col(first: string, second?: any) : Column {
     if (!second) {
-      assert.strictEqual(_.keys(this.query.sources).length, 1);
-      return new Column(this.query, _.keys(this.query.sources)[0], first);
+      return new Column(this.query, this.substitute(this.defaultSourceName), first);
     }
     else {
-      return new Column(this.query, first, second);
+      return new Column(this.query, this.substitute(first), second);
     }
   }
 
