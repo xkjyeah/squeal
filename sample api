@@ -1,0 +1,130 @@
+Objectives:
+1. Queries can be linked to tables
+
+
+2. Joins can be used to expand data
+  - Most problematic: naming conflicts during joins
+
+
+class Query {
+
+  // Initially it has only one data source -- from the fromTable expression
+  // This grows as more joins() are called
+  dataSources: {[source: string] : Query | string}
+  _substitutions: {[originalReference: string] : newReference}
+
+  // Used by Row to query higher contexts
+  context: Query
+
+  static fromTable(string, TableOptions) : Query
+
+  // With this other query as a secondary data source ??
+  static fromQuery(Query) : Query
+
+  /* Filtering methods */
+  _whereClauses : WhereClause[]
+  where(Row => Query) : Query
+
+  _orderByClauses: OrderByClause[]
+  orderBy(Row => Query, string) : Query
+
+  // Default: (row) => row.col('*')
+  _selectExpressions : SelectExpression[] | void
+  select(SelectExpression) : Query
+  selectNone(SelectExpression) : Query
+
+  /* Data retrieval */
+  include(Query | string, IncludeOptions) : Query
+
+  // add (as, query) to dataSources
+  //  --> allows row.col(as, colName) to succeed
+  // remove name from query
+  // add (as, query) to _joins
+  //
+  // The only optimization here I guess is that if there's only one data
+  // source in the target table, and it's table name, then include
+  // the table directly.
+  //
+  // Problem: If you run:
+  // modelA.join( modelB.where(...) )
+  //
+  // Then modelB where cannot use short-cut where
+  //
+  _joins : [[string, Query]]
+  join(Query | string, JoinOptions) : Query
+
+
+  get() : any[]
+
+  /*
+    Relational methods -- To manage relationships between a bunch of tables,
+    probably have to create a relationship manager class :/, instead of
+    tracing the evolution of the class.
+  */
+  _hasManyRelations : {[association: string] : [Query, HasManyOptions]}
+  _belongsToRelations : {[association: string] : [Query, BelongsToOptions]}
+
+  hasMany(Query, HasManyOptions) : Query
+  belongsTo(Query, BelongsToOptions) : Query
+
+  /* labels */
+  // Give a name to this query. Default : tableName
+  // Joining removes a name?
+  // Giving a name allows functions to query this table by the name
+  //
+  _name : string
+  name(string) : Query
+
+}
+
+interface IncludeOptions {
+  as?: string
+}
+
+interface JoinOptions {
+  as?: string,
+  on: (Row) => Expression,
+  type: string // LEFT / RIGHT / INNER / FULL OUTER
+}
+
+interface IncludeOptions {
+  as?: string,
+  on: (Row) => Expression
+}
+
+interface TableOptions {
+  as?: string
+  columnNames?: string[]
+}
+
+type WhereClause = Row => Expression
+
+type SelectExpression = (Row) => Expression | [Expression, string]
+
+class Row {
+  defaultSource(string) : Row
+  applySubstitutions(Substitutions) : Row
+}
+
+==> a utility function to automatically wrap the default source
+-- problem: what if the source is renamed??? or do we simply disallow it? [No]
+--
+-- A join A as A2 -- what happens to the "defaultSource" reference? You must
+-- somehow save a reference to the context as it was defined...
+-- and when generating the SQL know that the reference has been renamed. Hm. Hard.
+--
+-- If (A join B) join (A join C)? Don't rename -- (A join C) goes into a WITH query
+--
+-- all expression functions -- WHERE, JOIN, ORDER BY, SELECT must use these substitutions
+def wrapFn(exprFn) = (row) => {exprFn(row.defaultSource(...))}
+def wrapSubstitutions(exprFn) => (row) => {exprFn(row.applySubstitutions(substitutions))}
+
+
+////////////////////////////////////////////////// EXAMPLES
+name:
+const User = Query.fromTable('users', {as: 'User'})
+  .join(User, {
+    as: 'Referrer',
+    on: (row) => row.col('Referrer', 'id').equal(row.col('User', 'referrerId'))
+  })
+  .name('UserWithReferrer')
