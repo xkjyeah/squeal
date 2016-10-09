@@ -333,6 +333,23 @@ export class Query {
       type: db.QueryTypes.SELECT
     });
 
+    //
+    let primaryKeyValues = rows.map(r => r[primaryKeyAttribute]);
+    for (let include of this.includes) {
+      // See how this model is linked to the other model
+      //
+      include.where((row) => row[foreignKeyAttribute].in(list(primaryKeyValues)))
+        .get()
+        .then((subModelRows) => {
+          // When results are returned, assign them
+          let groups = _.groupBy(subModelRows);
+
+          for (let row of rows) {
+            row[subModelAs] = groups;
+          }
+        });
+    }
+
     return rows;
   }
 }

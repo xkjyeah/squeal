@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "lab --sourcemaps --transform node_modules/lab-transform-typescript -c test",
+    "test": "lab --sourcemaps --transform node_modules/lab-transform-typescript -c test $TESTS",
     "build": "tsc -p src"
   },
   "author": "",

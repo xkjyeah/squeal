@@ -1,11 +1,14 @@
-import * as Lab from 'lab';
+declare var require : any;
+declare var filename : string;
+
+// import * as Lab from 'lab';
 import * as expect from 'must';
 
 import {RowSource, Table, Query} from '../src/index.ts';
 import {db, Sequelize} from './sequelize-integration.ts';
 import {ModelManager} from '../src/SequelizeIntegration.ts';
 
-export const lab = Lab.script();
+const lab = exports.lab = require('lab').script();
 
 lab.experiment('Basic with Database', () => {
   var Person;
@@ -57,6 +60,11 @@ lab.experiment('Basic with Database', () => {
 
     modelManager = new ModelManager(db);
   });
+
+  lab.after(async function() {
+    await Person.drop();
+    await Pet.drop();
+  })
 
   lab.test('Table select', async function () {
     var personQuery = Query.fromRowSource(modelManager.tablesByName['people']);
