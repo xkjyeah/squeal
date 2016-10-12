@@ -37,7 +37,7 @@ export class Query {
     q._selectExpressions = [
         (row : Row) => tableOptions.columnNames.map(c => (<Selection>{
           expression: row.col(as, c),
-          as: null,
+          as: c,
         }))
     ];
     q._joins = [];
@@ -187,18 +187,28 @@ export class Query {
         //  AS (SELECT * FROM originalReference)
         // ... FROM ... JOIN newReference
         //
-        let tableName = targetDataSources[keys[0]];
+        let tableName = <string>targetDataSources[keys[0]];
         let as = options.as || target._name;
 
         assert(!this._resolveSource(as), `Alias ${as} has already been used`)
 
         clone.dataSources[as] = tableName;
+        clone._joins.push(<Join>{
+          dataSource: tableName,
+          on: options.on,
+          as: as,
+          type: joinType
+        })
 
+        // FIXME: scan all ancestors
         let conflicts = _.intersection(keys, Object.keys(this.dataSources));
         let substitutions = conflicts.map(originalReference => [
           originalReference,
           this._generateNewReference(originalReference)
         ])
+        if (options.as) {
+          substitutions.push([tableName, as]);
+        }
         let substitutionsMap = _.fromPairs(<[string, string][]> substitutions);
 
         clone._whereClauses = clone._whereClauses.concat(
@@ -266,14 +276,25 @@ export class Query {
     }
     throw new Error("No free identifier found!");
   }
-  public _withDependencies(usedIdentifiers : {[source: string]: boolean}) : [string, string, Query | string][] {
+  /**
+    * FIXME: re-use WITH sources by finding similarities
+    */
+  public _withDependencies(usedIdentifiers : {[source: string]: boolean}) : WithDependenciesReturn[] {
     let immediateWithDependencies = Object.keys(this.dataSources)
       // .filter(sourceName => this.dataSources[sourceName] instanceof Query)
-      .map(sourceName => [
-        sourceName,
-        this._generateAlias(sourceName, usedIdentifiers),
-        this.dataSources[sourceName]
-      ])
+      .map(sourceName => {
+        let someAlias = this._generateAlias(sourceName, usedIdentifiers);
+
+        return {
+          // How we refer to it in this library
+          squealAlias: sourceName,
+          // How it's referred to in the database (either as a with, or a table name)
+          sourceHandle: (typeof this.dataSources[sourceName] === 'string') ?
+              this.dataSources[sourceName] : someAlias,
+          queryAlias: someAlias,
+          dataSource: this.dataSources[sourceName]
+        }
+      });
 
     let parentDependencies : any = _(this.dataSources)
       .values()
@@ -287,7 +308,7 @@ export class Query {
     return allDependencies;
   }
 
-  private _toSQL(dataSourceIdentifierMap : {[source: string]: string}) : string {
+  private _toSQL(dataSourceIdentifierMap : {[source: string]: WithDependenciesReturn}) : string {
     let row = new Row(this);
     let selectionPart = _(this._selectExpressions)
       .map(sexpr => sexpr(row))
@@ -306,7 +327,7 @@ export class Query {
       return `"${col}"`
     }
 
-    let fromPart = esc(dataSourceIdentifierMap[this._baseSource]) + " "
+    let fromPart = esc(dataSourceIdentifierMap[this._baseSource].sourceHandle) + " "
       + this._joins.map(join => {
         let joinSpec = join.type == JoinType.INNER ? 'INNER JOIN'
                       :join.type == JoinType.OUTER ? 'OUTER JOIN'
@@ -314,11 +335,13 @@ export class Query {
                       :join.type == JoinType.RIGHT ? 'RIGHT JOIN'
                       :'??UNKNOWN JOIN??';
 
-        let tableName = esc(dataSourceIdentifierMap[join.as])
+        let tableName = esc(dataSourceIdentifierMap[join.as].sourceHandle)
+
+        let as = ' AS ' + dataSourceIdentifierMap[join.as].queryAlias;
 
         let conditions = join.on(row).toSQL(dataSourceIdentifierMap);
 
-        return `\n    ${joinSpec} ${tableName} ON ${conditions}`
+        return `\n    ${joinSpec} ${tableName} ${as} ON ${conditions}`
       }).join('');
 
     let wherePart = _(this._whereClauses)
@@ -336,18 +359,17 @@ export class Query {
 
   public toSQL() : string {
     let withDependencies = this._withDependencies({});
-    let sourceAliasMap = <{[src: string]: string}>(_(withDependencies)
-      .map(t => [t[0], t[1]])
-      .fromPairs()
+    let sourceAliasMap = <{[src: string]: WithDependenciesReturn}>(_(withDependencies)
+      .keyBy(x => x.squealAlias)
       .value());
     let withList = withDependencies
-      .filter(([src, alias, query]) => query instanceof Query)
+      .filter(w => w.dataSource instanceof Query)
     let coreSQL = this._toSQL(sourceAliasMap)
 
     let withPart = _.size(withList) > 0 ? "WITH " +
       withList
-        .map(([src, alias, query]) =>
-          `${alias} AS (${(<Query>query)._toSQL(sourceAliasMap)})`
+        .map(wd =>
+          `${wd.sourceHandle} AS (${(<Query>wd.dataSource)._toSQL(sourceAliasMap)})`
         ) : '';
 
     return withPart + coreSQL;
@@ -356,9 +378,18 @@ export class Query {
   public get(sequelize : any) {
     return sequelize.query(this.toSQL(), {
       type: sequelize.QueryTypes.SELECT
+    }).then((rows) => {
+      return rows.map(row => {
+        let newRowObject = {};
+
+        _(row).forEach((value, key) => {
+          _.set(newRowObject, key, value)
+        })
+
+        return newRowObject
+      })
     })
   }
-
 }
 
 export type SourceReferenceSubstitutions = {[originalReference: string] : string};
@@ -416,4 +447,10 @@ export interface Include {
   dataSource: string | Query,
   on: ExpressionFn,
 }
-export type DataSourceIdentifierMap = {[source: string]: string};
+export interface WithDependenciesReturn {
+  squealAlias: string,
+  sourceHandle: string,
+  queryAlias: string,
+  dataSource: Query | string
+};
+export type DataSourceIdentifierMap = {[source: string]: WithDependenciesReturn};

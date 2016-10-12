@@ -7,6 +7,7 @@ import * as Lab from 'lab';
 import * as expect from 'must';
 
 import {Table, Query} from '../src/index.ts';
+import {JoinType, JoinOptions} from '../src/Query.ts';
 import {db, Sequelize} from './sequelize-integration.ts';
 import {ModelManager} from '../src/SequelizeIntegration.ts';
 
@@ -95,6 +96,23 @@ lab.experiment('Basic Query with Database', () => {
     expect(persons.find(p => p.name === 'Michael')).exist()
     expect(persons.find(p => p.name !== 'Michael')).not.exist()
   });
+
+
+  lab.test('Table select with join (where outside)', async function() {
+    var pets = await PetQ
+      .join(PersonQ, <JoinOptions>{
+        as: 'owner',
+        on: (row : Row) =>
+          row.col('owner', 'id') .eq( row.col('pets', 'ownerId') ),
+        type: JoinType.INNER
+      })
+      .where((row) => row.col('owner', 'name').eq('Michael'))
+      .get(db);
+
+    expect(pets.length).equal(1)
+    expect(pets[0].owner.name).equal('Michael')
+    expect(pets[0].name).equal('Bubbles')
+  })
 
   // lab.test('Table select with join (where outside)', async function() {
   //   var persons = await PersonQ

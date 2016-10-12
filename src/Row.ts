@@ -36,13 +36,16 @@ export class Row {
     Successively apply substitutions
   */
   substitute(source: string) : string {
-    return _.reduce(this.substitutions, (acc, val, key, col) => {
+    let result = _.reduce(this.substitutions, (acc, val, key, col) => {
       if (acc in val) {
         return val[acc];
       } else {
         return acc;
       }
     }, source)
+
+    console.log('substitute()', source, result, this.substitutions)
+    return result;
   }
 
   star(sourceName: string) : AllColumns {

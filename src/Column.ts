@@ -16,7 +16,7 @@ export class Column extends Expression {
   }
 
   toSQL(aliases : DataSourceIdentifierMap) {
-    return `"${aliases[this.sourceName]}"."${this.colName}"`
+    return `"${aliases[this.sourceName].queryAlias}"."${this.colName}"`
   }
 
   _constructSummary(sqlFunc: string) : Expression {
